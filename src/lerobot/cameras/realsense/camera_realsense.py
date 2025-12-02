@@ -129,11 +129,14 @@ class RealSenseCamera(Camera):
 
         self.rs_pipeline: rs.pipeline | None = None
         self.rs_profile: rs.pipeline_profile | None = None
+        self.rs_align: rs.align = rs.align(rs.stream.color)
+        self.rs_depth_scale: int | None = None
 
         self.thread: Thread | None = None
         self.stop_event: Event | None = None
         self.frame_lock: Lock = Lock()
-        self.latest_frame: NDArray[Any] | None = None
+        self.latest_color_frame: NDArray[Any] | None = None
+        self.latest_depth_frame: NDArray[Any] | None = None
         self.new_frame_event: Event = Event()
 
         self.rotation: int | None = get_cv2_rotation(config.rotation)
@@ -312,6 +315,10 @@ class RealSenseCamera(Camera):
                 self.width, self.height = actual_width, actual_height
                 self.capture_width, self.capture_height = actual_width, actual_height
 
+        if self.use_depth:
+            depth_sensor = self.rs_profile.get_device().first_depth_sensor()
+            self.rs_depth_scale = depth_sensor.get_depth_scale()
+
     def read_depth(self, timeout_ms: int = 200) -> NDArray[Any]:
         """
         Reads a single frame (depth) synchronously from the camera.
@@ -401,6 +408,34 @@ class RealSenseCamera(Camera):
 
         return color_image_processed
 
+    def read_frames(self, color_mode: ColorMode | None = None, timeout_ms: int = 200) -> tuple[NDArray[Any], NDArray[Any]]:
+        if not self.is_connected:
+            raise DeviceNotConnectedError(f"{self} is not connected.")
+
+        start_time = time.perf_counter()
+
+        if self.rs_pipeline is None:
+            raise RuntimeError(f"{self}: rs_pipeline must be initialized before use.")
+
+        ret, frames = self.rs_pipeline.try_wait_for_frames(timeout_ms=timeout_ms)
+
+        if not ret or frames is None:
+            raise RuntimeError(f"{self} read failed (status={ret}).")
+
+        aligned_frames = self.rs_align.process(frames)
+        color_frame = aligned_frames.get_color_frame()
+        color_image_raw = np.asanyarray(color_frame.get_data())
+        depth_frame = frames.get_depth_frame()
+        depth_image_raw = np.asanyarray(depth_frame.get_data())
+
+        color_image_processed = self._postprocess_image(color_image_raw, color_mode)
+        depth_image_processed = self._postprocess_image(depth_image_raw, depth_frame=True)
+
+        read_duration_ms = (time.perf_counter() - start_time) * 1e3
+        logger.debug(f"{self} read took: {read_duration_ms:.1f}ms")
+
+        return color_image_processed, depth_image_processed
+
     def _postprocess_image(
         self, image: NDArray[Any], color_mode: ColorMode | None = None, depth_frame: bool = False
     ) -> NDArray[Any]:
@@ -446,6 +481,11 @@ class RealSenseCamera(Camera):
         if self.rotation in [cv2.ROTATE_90_CLOCKWISE, cv2.ROTATE_90_COUNTERCLOCKWISE, cv2.ROTATE_180]:
             processed_image = cv2.rotate(processed_image, self.rotation)
 
+        if depth_frame:
+            alpha = 0.25 * (1 / self.config.max_depth_m) * (self.rs_depth_scale / 0.001)
+            processed_image = cv2.convertScaleAbs(image, alpha=alpha)
+            processed_image = cv2.applyColorMap(processed_image, cv2.COLORMAP_JET)
+
         return processed_image
 
     def _read_loop(self) -> None:
@@ -464,10 +504,11 @@ class RealSenseCamera(Camera):
 
         while not self.stop_event.is_set():
             try:
-                color_image = self.read(timeout_ms=500)
+                color_image, depth_image = self.read_frames(timeout_ms=500)
 
                 with self.frame_lock:
-                    self.latest_frame = color_image
+                    self.latest_color_frame = color_image
+                    self.latest_depth_frame = depth_image
                 self.new_frame_event.set()
 
             except DeviceNotConnectedError:
@@ -534,13 +575,54 @@ class RealSenseCamera(Camera):
             )
 
         with self.frame_lock:
-            frame = self.latest_frame
+            frame = self.latest_color_frame
             self.new_frame_event.clear()
 
-        if frame is None:
+        return frame
+
+    def async_read_frames(self, timeout_ms: float = 200) -> tuple[NDArray[Any], NDArray[Any]]:
+        """
+        Reads the latest available frame data (color) asynchronously.
+
+        This method retrieves the most recent color frame captured by the background
+        read thread. It does not block waiting for the camera hardware directly,
+        but may wait up to timeout_ms for the background thread to provide a frame.
+
+        Args:
+            timeout_ms (float): Maximum time in milliseconds to wait for a frame
+                to become available. Defaults to 200ms (0.2 seconds).
+
+        Returns:
+            np.ndarray:
+            The latest captured frame data (color image), processed according to configuration.
+
+        Raises:
+            DeviceNotConnectedError: If the camera is not connected.
+            TimeoutError: If no frame data becomes available within the specified timeout.
+            RuntimeError: If the background thread died unexpectedly or another error occurs.
+        """
+        if not self.is_connected:
+            raise DeviceNotConnectedError(f"{self} is not connected.")
+
+        if self.thread is None or not self.thread.is_alive():
+            self._start_read_thread()
+
+        if not self.new_frame_event.wait(timeout=timeout_ms / 1000.0):
+            thread_alive = self.thread is not None and self.thread.is_alive()
+            raise TimeoutError(
+                f"Timed out waiting for frame from camera {self} after {timeout_ms} ms. "
+                f"Read thread alive: {thread_alive}."
+            )
+
+        with self.frame_lock:
+            color_frame = self.latest_color_frame
+            depth_frame = self.latest_depth_frame
+            self.new_frame_event.clear()
+
+        if color_frame is None or depth_frame is None:
             raise RuntimeError(f"Internal error: Event set but no frame available for {self}.")
 
-        return frame
+        return color_frame, depth_frame
 
     def disconnect(self) -> None:
         """

@@ -119,6 +119,19 @@ class Camera(abc.ABC):
         pass
 
     @abc.abstractmethod
+    def async_read_frames(self, timeout_ms: float = ...) -> tuple[NDArray[Any], NDArray[Any]]:
+        """Asynchronously capture and return color and depth frames from the camera.
+
+        Args:
+            timeout_ms: Maximum time to wait for a frame in milliseconds.
+                        Defaults to implementation-specific timeout.
+
+        Returns:
+            np.ndarray: Captured frame as a numpy array.
+        """
+        pass
+
+    @abc.abstractmethod
     def disconnect(self) -> None:
         """Disconnect from the camera and release resources."""
         pass
