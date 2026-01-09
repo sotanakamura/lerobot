@@ -677,9 +677,10 @@ def control_loop(
                 if isinstance(v, torch.Tensor)
             }
             # Use teleop_action if available, otherwise use the action from the transition
-            action_to_record = transition[TransitionKey.COMPLEMENTARY_DATA].get(
+            action_to_record = transition[TransitionKey.INFO].get(
                 "teleop_action", transition[TransitionKey.ACTION]
             )
+            action_to_record = torch.tensor(action_to_record, dtype=torch.float32)
             frame = {
                 **observations,
                 ACTION: action_to_record.cpu(),
@@ -724,6 +725,8 @@ def control_loop(
 
         # Maintain fps timing
         precise_sleep(max(dt - (time.perf_counter() - step_start_time), 0.0))
+
+    dataset.finalize()
 
     if dataset is not None and cfg.dataset.push_to_hub:
         logging.info("Pushing dataset to hub")
