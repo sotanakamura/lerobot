@@ -1,0 +1,21 @@
+{
+    "dataset": {
+        "repo_id": "user/id",
+        "root": "./data/hil"
+    },
+    "policy": {
+        "type": "sac",
+        "vision_encoder_name": "helper2424/resnet10",
+        "push_to_hub": false,
+        "device": "cuda"
+    },
+    "env": {
+        "type": "gym_manipulator",
+        "name": "gym_hil",
+        "task": "PandaPickCubeKeyboard-v0",
+        "fps": 10
+    },
+    "wandb": {
+        "enable": true
+    }
+}
