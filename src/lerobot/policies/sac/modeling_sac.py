@@ -45,6 +45,7 @@ class SACPolicy(
     def __init__(
         self,
         config: SACConfig | None = None,
+        **kwargs,
     ):
         super().__init__(config)
         config.validate_features()

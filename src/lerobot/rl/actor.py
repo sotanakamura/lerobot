@@ -60,6 +60,7 @@ from torch.multiprocessing import Event, Queue
 from lerobot.cameras import opencv  # noqa: F401
 from lerobot.configs import parser
 from lerobot.configs.train import TrainRLServerPipelineConfig
+from lerobot.datasets.lerobot_dataset import LeRobotDatasetMetadata
 from lerobot.policies.factory import make_policy
 from lerobot.policies.sac.modeling_sac import SACPolicy
 from lerobot.processor import TransitionKey
@@ -251,9 +252,10 @@ def act_with_policy(
     ### Instantiate the policy in both the actor and learner processes
     ### To avoid sending a SACPolicy object through the port, we create a policy instance
     ### on both sides, the learner sends the updated parameters every n steps to update the actor's parameters
+    meta = LeRobotDatasetMetadata(cfg.dataset.repo_id, cfg.dataset.root)
     policy: SACPolicy = make_policy(
         cfg=cfg.policy,
-        env_cfg=cfg.env,
+        ds_meta=meta
     )
     policy = policy.eval()
     assert isinstance(policy, nn.Module)

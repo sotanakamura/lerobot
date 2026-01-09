@@ -63,7 +63,7 @@ from lerobot.cameras import opencv  # noqa: F401
 from lerobot.configs import parser
 from lerobot.configs.train import TrainRLServerPipelineConfig
 from lerobot.datasets.factory import make_dataset
-from lerobot.datasets.lerobot_dataset import LeRobotDataset
+from lerobot.datasets.lerobot_dataset import LeRobotDataset, LeRobotDatasetMetadata
 from lerobot.policies.factory import make_policy
 from lerobot.policies.sac.modeling_sac import SACPolicy
 from lerobot.rl.buffer import ReplayBuffer, concatenate_batch_transitions
@@ -306,9 +306,10 @@ def add_actor_information_and_train(
 
     logging.info("Initializing policy")
 
+    meta = LeRobotDatasetMetadata(cfg.dataset.repo_id, cfg.dataset.root)
     policy: SACPolicy = make_policy(
         cfg=cfg.policy,
-        env_cfg=cfg.env,
+        ds_meta=meta
     )
 
     assert isinstance(policy, nn.Module)
