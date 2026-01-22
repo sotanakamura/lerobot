@@ -136,7 +136,8 @@ from lerobot.utils.utils import (
     log_say,
 )
 from lerobot.utils.visualization_utils import init_rerun, log_rerun_data
-
+from lerobot_teleoperator_quest3 import Quest3
+import cv2
 
 @dataclass
 class DatasetRecordConfig:
@@ -324,6 +325,10 @@ def record_loop(
 
         # Get robot observation
         obs = robot.get_observation()
+        if isinstance(teleop, Quest3):
+            stereo = cv2.cvtColor(teleop.stereo, cv2.COLOR_BGR2RGB)
+            obs["left_eye"] = stereo[1920//4:1920*3//4, 1920//4:1920*3//4]
+            obs["right_eye"] = stereo[1920//4:1920*3//4, 1920+1920//4:1920+1920*3//4]
 
         # Applies a pipeline to the raw robot observation, default is IdentityProcessor
         obs_processed = robot_observation_processor(obs)
@@ -429,6 +434,9 @@ def record(cfg: RecordConfig) -> LeRobotDataset:
             use_videos=cfg.dataset.video,
         ),
     )
+    if isinstance(teleop, Quest3):
+        dataset_features["observation.images.left_eye"] = {'dtype': 'video', 'shape': (960, 960, 3), 'names': ['height', 'width', 'channels']}
+        dataset_features["observation.images.right_eye"] = {'dtype': 'video', 'shape': (960, 960, 3), 'names': ['height', 'width', 'channels']}
 
     dataset = None
     listener = None
@@ -445,7 +453,7 @@ def record(cfg: RecordConfig) -> LeRobotDataset:
             if hasattr(robot, "cameras") and len(robot.cameras) > 0:
                 dataset.start_image_writer(
                     num_processes=cfg.dataset.num_image_writer_processes,
-                    num_threads=cfg.dataset.num_image_writer_threads_per_camera * len(robot.cameras),
+                    num_threads=cfg.dataset.num_image_writer_threads_per_camera * (len(robot.cameras) + (2 if isinstance(teleop, Quest3) else 0)),
                 )
             sanity_check_dataset_robot_compatibility(dataset, robot, cfg.dataset.fps, dataset_features)
         else:
@@ -459,7 +467,7 @@ def record(cfg: RecordConfig) -> LeRobotDataset:
                 features=dataset_features,
                 use_videos=cfg.dataset.video,
                 image_writer_processes=cfg.dataset.num_image_writer_processes,
-                image_writer_threads=cfg.dataset.num_image_writer_threads_per_camera * len(robot.cameras),
+                image_writer_threads=cfg.dataset.num_image_writer_threads_per_camera * (len(robot.cameras) + (2 if isinstance(teleop, Quest3) else 0)),
                 batch_encoding_size=cfg.dataset.video_encoding_batch_size,
                 vcodec=cfg.dataset.vcodec,
             )
