@@ -452,8 +452,8 @@ def record(cfg: RecordConfig) -> LeRobotDataset:
 
             if hasattr(robot, "cameras") and len(robot.cameras) > 0:
                 dataset.start_image_writer(
-                    num_processes=cfg.dataset.num_image_writer_processes,
-                    num_threads=cfg.dataset.num_image_writer_threads_per_camera * (len(robot.cameras) + (2 if isinstance(teleop, Quest3) else 0)),
+                    num_processes=cfg.dataset.num_image_writer_processes if not isinstance(teleop, Quest3) else 8,
+                    num_threads=cfg.dataset.num_image_writer_threads_per_camera * len(robot.cameras) if not isinstance(teleop, Quest3) else 1,
                 )
             sanity_check_dataset_robot_compatibility(dataset, robot, cfg.dataset.fps, dataset_features)
         else:
@@ -466,8 +466,8 @@ def record(cfg: RecordConfig) -> LeRobotDataset:
                 robot_type=robot.name,
                 features=dataset_features,
                 use_videos=cfg.dataset.video,
-                image_writer_processes=cfg.dataset.num_image_writer_processes,
-                image_writer_threads=cfg.dataset.num_image_writer_threads_per_camera * (len(robot.cameras) + (2 if isinstance(teleop, Quest3) else 0)),
+                image_writer_processes=cfg.dataset.num_image_writer_processes if not isinstance(teleop, Quest3) else 8,
+                image_writer_threads=cfg.dataset.num_image_writer_threads_per_camera * len(robot.cameras) if not isinstance(teleop, Quest3) else 1,
                 batch_encoding_size=cfg.dataset.video_encoding_batch_size,
                 vcodec=cfg.dataset.vcodec,
             )
