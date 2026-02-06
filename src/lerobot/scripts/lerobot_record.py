@@ -326,9 +326,11 @@ def record_loop(
         # Get robot observation
         obs = robot.get_observation()
         if isinstance(teleop, Quest3):
-            stereo = cv2.cvtColor(teleop.stereo, cv2.COLOR_BGR2RGB)
-            obs["left_eye"] = stereo[1920//4:1920*3//4, 1920//4:1920*3//4]
-            obs["right_eye"] = stereo[1920//4:1920*3//4, 1920+1920//4:1920+1920*3//4]
+            obs["left_eye"] = teleop.stereo[1920//4:1920*3//4, 1920//4:1920*3//4]
+            obs["right_eye"] = teleop.stereo[1920//4:1920*3//4, 1920+1920//4:1920+1920*3//4]
+            obs["left_eye"] = cv2.cvtColor(teleop.stereo[1920//4:1920*3//4, 1920//4:1920*3//4], cv2.COLOR_BGR2RGB)
+            obs["right_eye"] = cv2.cvtColor(teleop.stereo[1920//4:1920*3//4, 1920+1920//4:1920+1920*3//4], cv2.COLOR_BGR2RGB)
+
 
         # Applies a pipeline to the raw robot observation, default is IdentityProcessor
         obs_processed = robot_observation_processor(obs)
