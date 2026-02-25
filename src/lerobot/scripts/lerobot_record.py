@@ -137,6 +137,7 @@ from lerobot.utils.utils import (
 )
 from lerobot.utils.visualization_utils import init_rerun, log_rerun_data
 from lerobot_teleoperator_quest3 import Quest3
+from lerobot_robot_sciurus17 import Sciurus17
 import cv2
 
 @dataclass
@@ -546,11 +547,16 @@ def record(cfg: RecordConfig) -> LeRobotDataset:
                     events["rerecord_episode"] = False
                     events["exit_early"] = False
                     dataset.clear_episode_buffer()
+                    if isinstance(robot, Sciurus17):
+                        robot.reset()
+                        time.sleep(10)
                     continue
 
                 if not events["stop_recording"]:
                     dataset.save_episode()
                     recorded_episodes += 1
+                    if isinstance(robot, Sciurus17):
+                        robot.reset()
     finally:
         log_say("Stop recording", cfg.play_sounds, blocking=True)
 
