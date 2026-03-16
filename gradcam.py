@@ -38,7 +38,7 @@ from lerobot.policies.utils import (
     populate_queues,
 )
 
-episode = 120
+episode = 40
 dataset = LeRobotDataset("", "/home/nakamura/data/tomato_merged_20260225/user/id", episodes=[episode])
 policy = DiffusionPolicy.from_pretrained("/home/nakamura/outputs/train/diffusion_20260225/checkpoints/200000/pretrained_model")
 policy.cuda()
@@ -54,7 +54,8 @@ for encoder in policy.diffusion.rgb_encoder:
 im_color = None
 im_heatmap = None
 
-fig, ax = plt.subplots()
+fig = plt.figure(figsize=(640*3/100, 480*2/100), dpi=100, frameon=False)
+ax = fig.add_axes([0, 0, 1, 1])
 ax.axis('off')
 
 writer = matplotlib.animation.FFMpegWriter(fps=10)
