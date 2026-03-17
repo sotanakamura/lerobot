@@ -39,7 +39,7 @@ from lerobot.policies.utils import (
 )
 
 episode = 0
-dataset = LeRobotDataset("", "/home/nakamura/data/eval_tomato_diffusion_A0_20260226", episodes=[episode])
+dataset = LeRobotDataset("", "/home/nakamura/data/eval_tomato_diff_doc_20260317", episodes=[episode])
 policy = DiffusionPolicy.from_pretrained("/home/nakamura/outputs/train/diffusion_20260225/checkpoints/200000/pretrained_model")
 policy.cuda()
 policy.train()
@@ -55,7 +55,7 @@ concat_image = None
 concat_heatmap = None
 obs_embed_cam = []
 
-fig = plt.figure(figsize=(640*3/100, 480*2/100), dpi=100, frameon=False)
+fig = plt.figure(figsize=(640*6/100, 480*10/100), dpi=100, frameon=False)
 ax = fig.add_axes([0, 0, 1, 1])
 ax.axis('off')
 
@@ -116,13 +116,16 @@ for i, batch in enumerate(tqdm.tqdm(dataloader)):
         concat_image = np.concatenate([concat_image, image], axis=0)
         concat_heatmap = np.concatenate([concat_heatmap, heatmap], axis=0)
 
-plt.imshow(concat_image[0:len(concat_image)//480//2*480], cmap='gray')
-plt.imshow(concat_heatmap[0:len(concat_heatmap)//480//2*480], cmap='jet', alpha=0.5)
-plt.savefig(f"gradcam_{episode}_first.png")
+for i in range(0, len(concat_image)//480, 10):
+    start = i*480
+    stop = (i+10)*480
+    if stop > len(concat_image):
+        stop = len(concat_image)
+    fig.set_size_inches(640*6/100, (stop-start)/100, forward=True)
+    plt.imshow(concat_image[start:stop], cmap='gray')
+    plt.imshow(concat_heatmap[start:stop], cmap='jet', alpha=0.5)
 
-plt.imshow(concat_image[len(concat_image)//480//2*480:], cmap='gray')
-plt.imshow(concat_heatmap[len(concat_heatmap)//480//2*480:], cmap='jet', alpha=0.5)
-plt.savefig(f"gradcam_{episode}_second.png")
+    plt.savefig(f"gradcam_{episode}_{i}.png")
 
 plt.clf()
 obs_embed_cam = np.stack(obs_embed_cam)
