@@ -8,7 +8,7 @@ import torch.nn
 import torch.nn.functional as F
 import numpy as np
 
-from lerobot.utils.constants import OBS_IMAGES
+from lerobot.utils.constants import OBS_IMAGES, OBS_STATE
 import tqdm
 
 class GradCAMVisualizer:
@@ -53,6 +53,7 @@ for encoder in policy.diffusion.rgb_encoder:
 
 concat_image = None
 concat_heatmap = None
+obs_embed_cam = []
 
 fig = plt.figure(figsize=(640*3/100, 480*2/100), dpi=100, frameon=False)
 ax = fig.add_axes([0, 0, 1, 1])
@@ -69,8 +70,14 @@ for i, batch in enumerate(tqdm.tqdm(dataloader)):
     actions = policy.predict_action_chunk(batch)
     target = torch.sum(torch.abs(actions[0,0]))
 
+    policy.diffusion.global_cond.retain_grad()
     policy.zero_grad()
     target.backward()
+
+    weights = policy.diffusion.global_cond.grad
+    tmp = torch.relu(weights * policy.diffusion.global_cond).squeeze().cpu().detach().numpy()
+    gradcam_camera_state = np.array([np.mean(tmp[0:19]), np.mean(tmp[19:83]), np.mean(tmp[83:147]), np.mean(tmp[147:211]), np.mean(tmp[211:275]), np.mean(tmp[275:339]), np.mean(tmp[339:403])])
+    obs_embed_cam.append(gradcam_camera_state)
 
     heatmaps = [visualizer.generate_heatmap()[0].cpu() for visualizer in visualizers]
     images = [batch[key][0].cpu() for key in policy.config.image_features]
@@ -109,6 +116,18 @@ for i, batch in enumerate(tqdm.tqdm(dataloader)):
         concat_image = np.concatenate([concat_image, image], axis=0)
         concat_heatmap = np.concatenate([concat_heatmap, heatmap], axis=0)
 
-plt.imshow(concat_image, cmap='gray')
-plt.imshow(concat_heatmap, cmap='jet', alpha=0.5)
-plt.savefig("gradcam.png")
+plt.imshow(concat_image[0:len(concat_image)//480//2*480], cmap='gray')
+plt.imshow(concat_heatmap[0:len(concat_heatmap)//480//2*480], cmap='jet', alpha=0.5)
+plt.savefig(f"gradcam_{episode}_first.png")
+
+plt.imshow(concat_image[len(concat_image)//480//2*480:], cmap='gray')
+plt.imshow(concat_heatmap[len(concat_heatmap)//480//2*480:], cmap='jet', alpha=0.5)
+plt.savefig(f"gradcam_{episode}_second.png")
+
+plt.clf()
+obs_embed_cam = np.stack(obs_embed_cam)
+keys = list(policy.config.image_features.keys())
+
+fig = plt.figure()
+plt.plot(obs_embed_cam[:, 0])
+plt.savefig(f"obs_embed_cam_{episode}.png")
