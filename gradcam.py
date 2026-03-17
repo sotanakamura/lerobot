@@ -38,8 +38,8 @@ from lerobot.policies.utils import (
     populate_queues,
 )
 
-episode = 40
-dataset = LeRobotDataset("", "/home/nakamura/data/tomato_merged_20260225/user/id", episodes=[episode])
+episode = 0
+dataset = LeRobotDataset("", "/home/nakamura/data/eval_tomato_diffusion_A0_20260226", episodes=[episode])
 policy = DiffusionPolicy.from_pretrained("/home/nakamura/outputs/train/diffusion_20260225/checkpoints/200000/pretrained_model")
 policy.cuda()
 policy.train()
@@ -51,48 +51,64 @@ for encoder in policy.diffusion.rgb_encoder:
     visualizer = GradCAMVisualizer(target_layer)
     visualizers.append(visualizer)
 
-im_color = None
-im_heatmap = None
+concat_image = None
+concat_heatmap = None
 
 fig = plt.figure(figsize=(640*3/100, 480*2/100), dpi=100, frameon=False)
 ax = fig.add_axes([0, 0, 1, 1])
 ax.axis('off')
 
-writer = matplotlib.animation.FFMpegWriter(fps=10)
+for i, batch in enumerate(tqdm.tqdm(dataloader)):
+    if i % 16 != 0:
+        continue
 
-with writer.saving(fig, f"gradcam_{episode}.mp4", dpi=100):
-    for batch in tqdm.tqdm(dataloader):
-        batch = {key: value.cuda() for key, value in batch.items() if isinstance(value, torch.Tensor)}
-        batch[OBS_IMAGES] = torch.stack([batch[key] for key in policy.config.image_features], dim=-4)
-        policy._queues = populate_queues(policy._queues, batch)
-        actions = policy.predict_action_chunk(batch)
-        target = torch.sum(torch.abs(actions[0,0]))
+    batch = {key: value.cuda() for key, value in batch.items() if isinstance(value, torch.Tensor)}
+    batch[OBS_IMAGES] = torch.stack([batch[key] for key in policy.config.image_features], dim=-4)
 
-        policy.zero_grad()
-        target.backward()
+    policy._queues = populate_queues(policy._queues, batch)
+    actions = policy.predict_action_chunk(batch)
+    target = torch.sum(torch.abs(actions[0,0]))
 
-        images = [batch[key][0].cpu() for key in policy.config.image_features]
-        heatmaps = [visualizer.generate_heatmap()[0].cpu() for visualizer in visualizers]
+    policy.zero_grad()
+    target.backward()
 
-        colored_images = []
-        resized_heatmaps = []
+    heatmaps = [visualizer.generate_heatmap()[0].cpu() for visualizer in visualizers]
+    images = [batch[key][0].cpu() for key in policy.config.image_features]
 
-        for image, heatmap in zip(images, heatmaps):
-            image = image.cpu().numpy().transpose(1, 2, 0)
-            heatmap = heatmap.unsqueeze(0).unsqueeze(0)
-            heatmap = F.interpolate(heatmap, size=(image.shape[0], image.shape[1]), mode='bilinear', align_corners=False).squeeze().numpy()
-            colored_images.append(image)
-            resized_heatmaps.append(heatmap)
+    colored_images = []
+    resized_heatmaps = []
 
+    for image, heatmap in zip(images, heatmaps):
+        image = image.cpu().numpy().transpose(1, 2, 0)
+        heatmap = heatmap.unsqueeze(0).unsqueeze(0)
+        heatmap = F.interpolate(heatmap, size=(image.shape[0], image.shape[1]), mode='bilinear', align_corners=False).squeeze().numpy()
+        colored_images.append(image)
+        resized_heatmaps.append(heatmap)
 
-        image = np.concatenate([np.concatenate(colored_images[0:3],axis=1),np.concatenate(colored_images[3:6],axis=1)],axis=0)
-        image = np.mean(image, axis=2)
-        heatmap = np.concatenate([np.concatenate(resized_heatmaps[0:3],axis=1),np.concatenate(resized_heatmaps[3:6],axis=1)],axis=0)
+    image = np.concatenate([
+        colored_images[0],
+        colored_images[3],
+        colored_images[1],
+        colored_images[4],
+        colored_images[2],
+        colored_images[5]], axis=1)
+    image = np.mean(image, axis=2)
+    heatmap = np.concatenate([
+        resized_heatmaps[0],
+        resized_heatmaps[3],
+        resized_heatmaps[1],
+        resized_heatmaps[4],
+        resized_heatmaps[2],
+        resized_heatmaps[5]], axis=1)
+    heatmap = (heatmap - heatmap.min()) / (heatmap.max() - heatmap.min() + 1e-8)
+    
+    if concat_image is None:
+        concat_image = image.copy()
+        concat_heatmap = heatmap.copy()
+    else:
+        concat_image = np.concatenate([concat_image, image], axis=0)
+        concat_heatmap = np.concatenate([concat_heatmap, heatmap], axis=0)
 
-        if im_color is None:
-            im_color = plt.imshow(image, cmap='gray')
-            im_heatmap = plt.imshow(heatmap, cmap='jet', alpha=0.5)
-        else:
-            im_color.set_data(image)
-            im_heatmap.set_data(heatmap)
-        writer.grab_frame()
+plt.imshow(concat_image, cmap='gray')
+plt.imshow(concat_heatmap, cmap='jet', alpha=0.5)
+plt.savefig("gradcam.png")
