@@ -60,7 +60,7 @@ ax = fig.add_axes([0, 0, 1, 1])
 ax.axis('off')
 
 for i, batch in enumerate(tqdm.tqdm(dataloader)):
-    if i % 16 != 0:
+    if i % 32 != 0:
         continue
 
     batch = {key: value.cuda() for key, value in batch.items() if isinstance(value, torch.Tensor)}
@@ -132,5 +132,8 @@ obs_embed_cam = np.stack(obs_embed_cam)
 keys = list(policy.config.image_features.keys())
 
 fig = plt.figure()
-plt.plot(obs_embed_cam[:, 0])
+plt.plot(np.arange(len(obs_embed_cam[:, 0]))+1, obs_embed_cam[:, 0])
+plt.xlabel("Inferences every 32 steps [times]")
+plt.ylabel("Temporal importance of robot states")
+plt.xlim(1, len(obs_embed_cam[:, 0]))
 plt.savefig(f"obs_embed_cam_{episode}.png")
